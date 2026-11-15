@@ -336,7 +336,13 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Карта мамы'),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Карта мамы'),
+            Text('Версия 2.0', style: TextStyle(fontSize: 12, color: Colors.white70)), // МЕТКА ВЕРСИИ
+          ],
+        ),
         actions: [IconButton(onPressed: _logout, icon: const Icon(Icons.exit_to_app))],
       ),
       body: Stack(
@@ -351,7 +357,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               },
             ),
             children: [
-              // ИСПРАВЛЕНО: Немецкое зеркало + userAgentPackageName
+              // НЕМЕЦКОЕ ЗЕРКАЛО
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.family_tracker',
@@ -364,7 +370,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 ]),
             ],
           ),
-          // Кнопка создания кода (поднята выше, чтобы точно влезла)
+          // Кнопка создания кода
           Positioned(
             bottom: 80, left: 20, right: 20,
             child: Card(
@@ -385,7 +391,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               ),
             ),
           ),
-          // Кнопка центрирования (поднята еще выше)
+          // Кнопка центрирования
           Positioned(
             bottom: 20, right: 20,
             child: FloatingActionButton(
@@ -492,7 +498,6 @@ class AdminLocationScreen extends StatelessWidget {
       body: FlutterMap(
         options: MapOptions(initialCenter: location, initialZoom: 16.0),
         children: [
-          // ИСПРАВЛЕНО: Немецкое зеркало + userAgentPackageName
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.family_tracker',
