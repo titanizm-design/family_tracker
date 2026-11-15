@@ -234,6 +234,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   List<LatLng> _routePoints = [];
   Timer? _timer;
   String? _adminToken;
+  String? _pairingCode; // Кнопка и состояние возвращены
   LatLng? _lastLocation; 
   bool _autoCenter = true;
 
@@ -248,8 +249,8 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     _adminToken = prefs.getString('token');
     
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      await _fetchMomData(); // Теперь это сработает, так как функция возвращает Future
-      await _fetchRouteHistory(); // И это тоже
+      await _fetchMomData();
+      await _fetchRouteHistory();
     });
   }
 
@@ -266,7 +267,6 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     _lastLocation = newLoc;
   }
 
-  // ИСПРАВЛЕНО: тип возвращаемого значения изменен на Future<void>
   Future<void> _fetchMomData() async {
     try {
       final response = await http.get(
@@ -287,7 +287,6 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     } catch (e) {}
   }
 
-  // ИСПРАВЛЕНО: тип возвращаемого значения изменен на Future<void>
   Future<void> _fetchRouteHistory() async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -304,6 +303,23 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
         });
       }
     } catch (e) {}
+  }
+
+  // ВОЗВРАЩЕНО: Генерация кода
+  void _generateCode() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$serverUrl/api/admin/generate-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'password': 'admin123'}),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() => _pairingCode = data['code']);
+      }
+    } catch (e) {
+      debugPrint('Ошибка генерации кода: $e');
+    }
   }
 
   void _logout() async {
@@ -337,7 +353,11 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               },
             ),
             children: [
-              TileLayer(urlTemplate: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png'),
+              // ИСПРАВЛЕНО: Французское зеркало + userAgentPackageName
+              TileLayer(
+                urlTemplate: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.family_tracker',
+              ),
               if (_routePoints.isNotEmpty)
                 PolylineLayer(polylines: [Polyline(points: _routePoints, strokeWidth: 4.0, color: Colors.blue)]),
               if (_momLocation != null)
@@ -346,8 +366,30 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 ]),
             ],
           ),
+          // ВОЗВРАЩЕНО: Карточка с кнопкой создания кода
           Positioned(
-            bottom: 20, right: 20,
+            bottom: 20, left: 20, right: 20,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_pairingCode != null)
+                      Text('Код для мамы: $_pairingCode', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue)),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.add_link),
+                      label: const Text('Создать код привязки'),
+                      onPressed: _generateCode,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Кнопка центрирования (сдвинута выше, чтобы не перекрывать кнопку кода)
+          Positioned(
+            bottom: 120, right: 20,
             child: FloatingActionButton(
               onPressed: () {
                 setState(() => _autoCenter = true);
@@ -452,7 +494,11 @@ class AdminLocationScreen extends StatelessWidget {
       body: FlutterMap(
         options: MapOptions(initialCenter: location, initialZoom: 16.0),
         children: [
-          TileLayer(urlTemplate: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png'),
+          // ИСПРАВЛЕНО: Французское зеркало + userAgentPackageName
+          TileLayer(
+            urlTemplate: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.example.family_tracker',
+          ),
           MarkerLayer(markers: [
             Marker(point: location, width: 40, height: 40, child: const Icon(Icons.location_on, color: Colors.blue, size: 40)),
           ]),
