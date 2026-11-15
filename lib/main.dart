@@ -58,7 +58,6 @@ void onStart(ServiceInstance service) async {
   final token = prefs.getString('tracker_token');
   if (token == null) return;
 
-  // --- ЛОГИКА УМНОГО ДАТЧИКА ДВИЖЕНИЯ ---
   DateTime lastMovementTime = DateTime.now();
   bool wasMoving = false;
   const double movementThreshold = 0.5; 
@@ -234,7 +233,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   List<LatLng> _routePoints = [];
   Timer? _timer;
   String? _adminToken;
-  String? _pairingCode; // Кнопка и состояние возвращены
+  String? _pairingCode; 
   LatLng? _lastLocation; 
   bool _autoCenter = true;
 
@@ -305,7 +304,6 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     } catch (e) {}
   }
 
-  // ВОЗВРАЩЕНО: Генерация кода
   void _generateCode() async {
     try {
       final response = await http.post(
@@ -353,9 +351,9 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               },
             ),
             children: [
-              // ИСПРАВЛЕНО: Французское зеркало + userAgentPackageName
+              // ИСПРАВЛЕНО: Немецкое зеркало + userAgentPackageName
               TileLayer(
-                urlTemplate: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.family_tracker',
               ),
               if (_routePoints.isNotEmpty)
@@ -366,9 +364,9 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
                 ]),
             ],
           ),
-          // ВОЗВРАЩЕНО: Карточка с кнопкой создания кода
+          // Кнопка создания кода (поднята выше, чтобы точно влезла)
           Positioned(
-            bottom: 20, left: 20, right: 20,
+            bottom: 80, left: 20, right: 20,
             child: Card(
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
@@ -387,9 +385,9 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
               ),
             ),
           ),
-          // Кнопка центрирования (сдвинута выше, чтобы не перекрывать кнопку кода)
+          // Кнопка центрирования (поднята еще выше)
           Positioned(
-            bottom: 120, right: 20,
+            bottom: 20, right: 20,
             child: FloatingActionButton(
               onPressed: () {
                 setState(() => _autoCenter = true);
@@ -494,9 +492,9 @@ class AdminLocationScreen extends StatelessWidget {
       body: FlutterMap(
         options: MapOptions(initialCenter: location, initialZoom: 16.0),
         children: [
-          // ИСПРАВЛЕНО: Французское зеркало + userAgentPackageName
+          // ИСПРАВЛЕНО: Немецкое зеркало + userAgentPackageName
           TileLayer(
-            urlTemplate: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+            urlTemplate: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.family_tracker',
           ),
           MarkerLayer(markers: [
