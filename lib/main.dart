@@ -61,29 +61,23 @@ void onStart(ServiceInstance service) async {
   // --- ЛОГИКА УМНОГО ДАТЧИКА ДВИЖЕНИЯ ---
   DateTime lastMovementTime = DateTime.now();
   bool wasMoving = false;
-  const double movementThreshold = 0.5; // Порог чувствительности (гравитация = 9.8)
+  const double movementThreshold = 0.5; 
 
-  // Слушаем акселерометр
   accelerometerEventStream().listen((AccelerometerEvent event) {
-    // Вычисляем общую силу ускорения
     double magnitude = sqrt(event.x * event.x + event.y * event.y + event.z * event.z);
-    
-    // Если телефон тряхнуло (сила отличается от состояния покоя)
     if ((magnitude - 9.8).abs() > movementThreshold) {
       lastMovementTime = DateTime.now();
       wasMoving = true;
     }
   });
 
-  // Отправляем координаты
   Future<void> sendLocation() async {
-    // Проверяем: двигался ли телефон за последние 5 минут?
     if (DateTime.now().difference(lastMovementTime).inMinutes > 5) {
       if (wasMoving) {
         print('Фон: телефон неподвижен 5 минут. GPS спит.');
         wasMoving = false;
       }
-      return; // Выходим, не тратим GPS
+      return; 
     }
 
     try {
@@ -97,7 +91,6 @@ void onStart(ServiceInstance service) async {
     }
   }
 
-  // Запускаем проверку каждую минуту
   Timer.periodic(const Duration(minutes: 1), (timer) async {
     await sendLocation();
   });
@@ -255,31 +248,26 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     _adminToken = prefs.getString('token');
     
     _timer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-      await _fetchMomData();
-      await _fetchRouteHistory();
+      await _fetchMomData(); // Теперь это сработает, так как функция возвращает Future
+      await _fetchRouteHistory(); // И это тоже
     });
   }
 
-  void _checkMovement(LatLng newLoc) async {
+  void _checkMovement(LatLng newLoc) {
     if (_lastLocation != null) {
       double distance = Geolocator.distanceBetween(
         _lastLocation!.latitude, _lastLocation!.longitude,
         newLoc.latitude, newLoc.longitude
       );
       if (distance > 10) {
-        // Уведомление, если нужно, можно раскомментировать
-        /*
-        await notificationsPlugin.show(
-          0, 'Мама в пути!', 'Она переместилась на ${distance.toStringAsFixed(0)} метров.',
-          const NotificationDetails(android: AndroidNotificationDetails('move', 'Движение', importance: Importance.max, priority: Priority.high, playSound: true)),
-        );
-        */
+        // Уведомление
       }
     }
     _lastLocation = newLoc;
   }
 
-  void _fetchMomData() async {
+  // ИСПРАВЛЕНО: тип возвращаемого значения изменен на Future<void>
+  Future<void> _fetchMomData() async {
     try {
       final response = await http.get(
         Uri.parse('$serverUrl/api/location/mom'),
@@ -299,7 +287,8 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
     } catch (e) {}
   }
 
-  void _fetchRouteHistory() async {
+  // ИСПРАВЛЕНО: тип возвращаемого значения изменен на Future<void>
+  Future<void> _fetchRouteHistory() async {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       final todayStart = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day).millisecondsSinceEpoch;
