@@ -413,6 +413,23 @@ class _TrackerScreenState extends State<TrackerScreen> {
     });
   }
 
+  // Функция для сброса токена и отвязки устройства
+  void _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('tracker_token');
+    
+    // Останавливаем фоновую службу
+    final service = FlutterBackgroundService();
+    service.invoke("stopService");
+
+    setState(() {
+      _token = null;
+      _isTracking = false;
+      _statusMessage = 'Устройство отвязано. Введите новый код.';
+      _codeController.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -440,6 +457,17 @@ class _TrackerScreenState extends State<TrackerScreen> {
               const Text('Устройство успешно привязано!', style: TextStyle(fontSize: 20)),
               const SizedBox(height: 10),
               Text('Статус: $_statusMessage', style: const TextStyle(color: Colors.blue, fontSize: 16)),
+              const SizedBox(height: 40),
+              // Кнопка отвязки
+              ElevatedButton.icon(
+                onPressed: _logout,
+                icon: const Icon(Icons.logout),
+                label: const Text('Отвязать устройство (Сброс)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
             ]
           ],
         ),
