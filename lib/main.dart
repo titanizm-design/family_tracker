@@ -1,14 +1,114 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-void main() {
+// Адрес вашего сервера
+const String serverUrl = 'http://2.27.194.53:3000';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeService();
   runApp(const MyApp());
+}
+
+// Инициализация фоновой службы
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'my_foreground',
+    'Семейный трекер',
+    description: 'Служба отслеживания местоположения',
+    importance: Importance.low,
+  );
+  
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: false,
+      isForegroundMode: true,
+      notificationChannelId: 'my_foreground',
+      initialNotificationTitle: 'Семейный трекер',
+      initialNotificationContent: 'Отслеживание местоположения активно',
+      foregroundServiceNotificationId: 888,
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: false,
+      onForeground: onStart,
+      onBackground: onIosBackground,
+    ),
+  );
+}
+
+@pragma('vm:entry-point')
+Future<bool> onIosBackground(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  return true;
+}
+
+// Логика работы в фоне
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) async {
+  DartPluginRegistrant.ensureInitialized();
+
+  if (service is AndroidServiceInstance) {
+    service.on('setAsForeground').listen((event) {
+      service.setAsForegroundService();
+    });
+    service.on('setAsBackground').listen((event) {
+      service.setAsBackgroundService();
+    });
+  }
+  
+  service.on('stopService').listen((event) {
+    service.stopSelf();
+  });
+
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('tracker_token');
+  if (token == null) return;
+
+  LocationSettings locationSettings = const LocationSettings(
+    accuracy: LocationAccuracy.high,
+    distanceFilter: 10, // Обновлять каждые 10 метров
+  );
+
+  Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$serverUrl/api/location'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token,
+        },
+        body: jsonEncode({
+          'lat': position.latitude,
+          'lon': position.longitude,
+          'accuracy': position.accuracy,
+          'battery': 100,
+          'is_charging': false,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }),
+      );
+      print('Фон: координаты отправлены (${response.statusCode})');
+    } catch (e) {
+      print('Фон: ошибка отправки $e');
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -55,14 +155,12 @@ class StartScreen extends StatelessWidget {
 
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
-
   @override
   State<AdminLoginScreen> createState() => _AdminLoginScreenState();
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final TextEditingController _passController = TextEditingController();
-  final String serverUrl = 'http://2.27.194.53:3000';
   bool _isLoading = false;
 
   void _login() async {
@@ -108,13 +206,11 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
 class AdminMapScreen extends StatefulWidget {
   const AdminMapScreen({super.key});
-
   @override
   State<AdminMapScreen> createState() => _AdminMapScreenState();
 }
 
 class _AdminMapScreenState extends State<AdminMapScreen> {
-  final String serverUrl = 'http://2.27.194.53:3000';
   LatLng? _momLocation;
   Timer? _timer;
   String? _pairingCode;
@@ -150,7 +246,6 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   void _fetchMomLocation() async {
     try {
       final token = '58f61cb290eeec9e77cfd825dd4a2f9f735c553400ee0ef3'; 
-      
       final response = await http.get(
         Uri.parse('$serverUrl/api/location/mom'),
         headers: {'x-auth-token': token},
@@ -161,9 +256,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
           _momLocation = LatLng(data['lat'], data['lon']);
         });
       }
-    } catch (e) {
-      // Игнорируем
-    }
+    } catch (e) {}
   }
 
   @override
@@ -223,19 +316,15 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
   }
 }
 
-// --- ЭКРАН ТРЕКЕРА ---
 class TrackerScreen extends StatefulWidget {
   const TrackerScreen({super.key});
-
   @override
   State<TrackerScreen> createState() => _TrackerScreenState();
 }
 
 class _TrackerScreenState extends State<TrackerScreen> {
   final TextEditingController _codeController = TextEditingController();
-  final String serverUrl = 'http://2.27.194.53:3000';
   bool _isTracking = false;
-  Timer? _locationTimer;
   String? _token;
   String _statusMessage = '';
 
@@ -250,6 +339,7 @@ class _TrackerScreenState extends State<TrackerScreen> {
     final savedToken = prefs.getString('tracker_token');
     if (savedToken != null) {
       setState(() => _token = savedToken);
+      _startBackgroundTracking(); // Автозапуск, если токен уже есть
     }
   }
 
@@ -269,7 +359,6 @@ class _TrackerScreenState extends State<TrackerScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final newToken = data['token'];
-        
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('tracker_token', newToken);
         
@@ -278,91 +367,50 @@ class _TrackerScreenState extends State<TrackerScreen> {
           _statusMessage = 'Устройство привязано!';
         });
         
-        _startTracking();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Устройство привязано!')));
+        _startBackgroundTracking();
       } else {
         setState(() {
           _isTracking = false;
           _statusMessage = 'Сервер отклонил код';
         });
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Неверный код')));
       }
     } catch (e) {
       setState(() {
         _isTracking = false;
         _statusMessage = 'Ошибка: $e';
       });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
     }
   }
 
-  void _startTracking() async {
+  void _startBackgroundTracking() async {
     if (_token == null) return;
+
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => _statusMessage = 'Включите GPS');
+      return;
+    }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        setState(() => _statusMessage = 'Нет разрешения на GPS');
-        return;
+         setState(() => _statusMessage = 'Нет разрешения на GPS');
+         return;
       }
     }
-    
-    if (permission == LocationPermission.deniedForever) {
-      setState(() => _statusMessage = 'GPS заблокирован навсегда. Разрешите в настройках');
-      return;
+
+    // Запускаем фоновую службу
+    final service = FlutterBackgroundService();
+    var isRunning = await service.isRunning();
+    if (!isRunning) {
+      service.startService();
     }
 
-    setState(() => _statusMessage = 'GPS включен. Ждем первый сигнал...');
-
-    // Отправляем координаты сразу при запуске
-    _sendCurrentLocation();
-
-    // И запускаем таймер каждые 60 секунд
-    _locationTimer = Timer.periodic(const Duration(seconds: 60), (timer) async {
-      _sendCurrentLocation();
+    setState(() {
+      _isTracking = true;
+      _statusMessage = 'Фоновое отслеживание запущено!';
     });
-  }
-
-  void _sendCurrentLocation() async {
-    try {
-      setState(() => _statusMessage = 'Получаем координаты...');
-      Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high)
-      );
-      
-      setState(() => _statusMessage = 'Отправка на сервер...');
-
-      final response = await http.post(
-        Uri.parse('$serverUrl/api/location'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': _token!,
-        },
-        body: jsonEncode({
-          'lat': position.latitude,
-          'lon': position.longitude,
-          'accuracy': position.accuracy,
-          'battery': 100,
-          'is_charging': false,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        setState(() => _statusMessage = 'Координаты отправлены!');
-      } else {
-        setState(() => _statusMessage = 'Ошибка сервера: ${response.statusCode}');
-      }
-    } catch (e) {
-      setState(() => _statusMessage = 'Ошибка отправки: $e');
-    }
-  }
-
-  @override
-  void dispose() {
-    _locationTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -392,12 +440,6 @@ class _TrackerScreenState extends State<TrackerScreen> {
               const Text('Устройство успешно привязано!', style: TextStyle(fontSize: 20)),
               const SizedBox(height: 10),
               Text('Статус: $_statusMessage', style: const TextStyle(color: Colors.blue, fontSize: 16)),
-              const SizedBox(height: 20),
-              if (_isTracking)
-                ElevatedButton(
-                  onPressed: _sendCurrentLocation, 
-                  child: const Text('Отправить координаты сейчас')
-                )
             ]
           ],
         ),
