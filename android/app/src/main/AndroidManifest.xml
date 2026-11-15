@@ -38,15 +38,12 @@
             </intent-filter>
         </activity>
         
-        <!-- Служба для фонового отслеживания (добавлен tools:replace) -->
+        <!-- Служба для фонового отслеживания -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:foregroundServiceType="location"
             android:exported="false"
+            android:stopWithTask="false" 
             tools:replace="android:exported" />
-
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
     </application>
 </manifest>
