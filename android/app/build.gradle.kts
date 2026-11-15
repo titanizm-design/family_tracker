@@ -7,8 +7,8 @@ plugins {
 
 android {
     namespace = "com.example.family_tracker"
-    compileSdk = 34
-    ndkVersion = "27.0.12077973"
+    compileSdk = 36  // Изменено с 34 на 36 (требование плагинов)
+    ndkVersion = "28.2.13676358" // Изменено на версию, которую требуют плагины
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
