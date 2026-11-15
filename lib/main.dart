@@ -82,33 +82,64 @@ void onStart(ServiceInstance service) async {
   final token = prefs.getString('tracker_token');
   if (token == null) return;
 
+  // Функция для отправки координат на сервер
+  Future<void> sendLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      await _sendToServer(token, position);
+    } catch (e) {
+      // Если GPS не отвечает, пробуем получить последнюю известную точку
+      Position? lastPosition = await Geolocator.getLastKnownPosition();
+      if (lastPosition != null) {
+        await _sendToServer(token, lastPosition);
+      } else {
+        print('Фон: не удалось получить координаты $e');
+      }
+    }
+  }
+
+  // 1. Отправляем сразу при старте
+  await sendLocation();
+
+  // 2. Отправляем раз в минуту (даже если стоим на месте)
+  Timer.periodic(const Duration(minutes: 1), (timer) async {
+    await sendLocation();
+  });
+
+  // 3. Слушаем поток для быстрых обновлений при движении (фильтр 50 метров, чтобы не спамить на работе)
   LocationSettings locationSettings = const LocationSettings(
     accuracy: LocationAccuracy.high,
-    distanceFilter: 10, // Обновлять каждые 10 метров
+    distanceFilter: 50, 
   );
 
   Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$serverUrl/api/location'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': token,
-        },
-        body: jsonEncode({
-          'lat': position.latitude,
-          'lon': position.longitude,
-          'accuracy': position.accuracy,
-          'battery': 100,
-          'is_charging': false,
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-        }),
-      );
-      print('Фон: координаты отправлены (${response.statusCode})');
-    } catch (e) {
-      print('Фон: ошибка отправки $e');
-    }
+    await _sendToServer(token, position);
   });
+}
+
+Future<void> _sendToServer(String token, Position position) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$serverUrl/api/location'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': token,
+      },
+      body: jsonEncode({
+        'lat': position.latitude,
+        'lon': position.longitude,
+        'accuracy': position.accuracy,
+        'battery': 100,
+        'is_charging': false,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }),
+    );
+    print('Фон: координаты отправлены (${response.statusCode})');
+  } catch (e) {
+    print('Фон: ошибка отправки $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
