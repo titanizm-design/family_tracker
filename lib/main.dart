@@ -24,7 +24,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Экран выбора роли
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key});
 
@@ -54,7 +53,6 @@ class StartScreen extends StatelessWidget {
   }
 }
 
-// --- ЭКРАН АДМИНИСТРАТОРА ---
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
 
@@ -164,7 +162,7 @@ class _AdminMapScreenState extends State<AdminMapScreen> {
         });
       }
     } catch (e) {
-      // Игнорируем ошибки
+      // Игнорируем
     }
   }
 
@@ -239,6 +237,7 @@ class _TrackerScreenState extends State<TrackerScreen> {
   bool _isTracking = false;
   Timer? _locationTimer;
   String? _token;
+  String _statusMessage = '';
 
   @override
   void initState() {
@@ -255,7 +254,11 @@ class _TrackerScreenState extends State<TrackerScreen> {
   }
 
   void _pairDevice() async {
-    setState(() => _isTracking = true);
+    setState(() {
+      _isTracking = true;
+      _statusMessage = 'Отправка кода на сервер...';
+    });
+    
     try {
       final response = await http.post(
         Uri.parse('$serverUrl/api/pair'),
@@ -272,18 +275,24 @@ class _TrackerScreenState extends State<TrackerScreen> {
         
         setState(() {
           _token = newToken;
-          _isTracking = false;
+          _statusMessage = 'Устройство привязано!';
         });
         
         _startTracking();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Устройство привязано!')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Устройство привязано!')));
       } else {
-        setState(() => _isTracking = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Неверный код')));
+        setState(() {
+          _isTracking = false;
+          _statusMessage = 'Сервер отклонил код';
+        });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Неверный код')));
       }
     } catch (e) {
-      setState(() => _isTracking = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      setState(() {
+        _isTracking = false;
+        _statusMessage = 'Ошибка: $e';
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
     }
   }
 
@@ -293,37 +302,61 @@ class _TrackerScreenState extends State<TrackerScreen> {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      if (permission == LocationPermission.denied) {
+        setState(() => _statusMessage = 'Нет разрешения на GPS');
+        return;
+      }
+    }
+    
+    if (permission == LocationPermission.deniedForever) {
+      setState(() => _statusMessage = 'GPS заблокирован навсегда. Разрешите в настройках');
+      return;
     }
 
-    setState(() => _isTracking = true);
+    setState(() => _statusMessage = 'GPS включен. Ждем первый сигнал...');
 
+    // Отправляем координаты сразу при запуске
+    _sendCurrentLocation();
+
+    // И запускаем таймер каждые 60 секунд
     _locationTimer = Timer.periodic(const Duration(seconds: 60), (timer) async {
-      try {
-        Position position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high)
-        );
-        
-        await http.post(
-          Uri.parse('$serverUrl/api/location'),
-          headers: {
-            'Content-Type': 'application/json',
-            'x-auth-token': _token!,
-          },
-          body: jsonEncode({
-            'lat': position.latitude,
-            'lon': position.longitude,
-            'accuracy': position.accuracy,
-            'battery': 100,
-            'is_charging': false,
-            'timestamp': DateTime.now().millisecondsSinceEpoch,
-          }),
-        );
-        debugPrint('Координаты отправлены!');
-      } catch (e) {
-        debugPrint('Ошибка отправки: $e');
-      }
+      _sendCurrentLocation();
     });
+  }
+
+  void _sendCurrentLocation() async {
+    try {
+      setState(() => _statusMessage = 'Получаем координаты...');
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high)
+      );
+      
+      setState(() => _statusMessage = 'Отправка на сервер...');
+
+      final response = await http.post(
+        Uri.parse('$serverUrl/api/location'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': _token!,
+        },
+        body: jsonEncode({
+          'lat': position.latitude,
+          'lon': position.longitude,
+          'accuracy': position.accuracy,
+          'battery': 100,
+          'is_charging': false,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() => _statusMessage = 'Координаты отправлены!');
+      } else {
+        setState(() => _statusMessage = 'Ошибка сервера: ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() => _statusMessage = 'Ошибка отправки: $e');
+    }
   }
 
   @override
@@ -354,11 +387,17 @@ class _TrackerScreenState extends State<TrackerScreen> {
                 ? const CircularProgressIndicator() 
                 : ElevatedButton(onPressed: _pairDevice, child: const Text('Подключиться к семье')),
             ] else ...[
-              const Icon(Icons.check_circle, color: Colors.green, size: 80),
+              Icon(_isTracking ? Icons.gps_fixed : Icons.check_circle, color: Colors.green, size: 80),
               const SizedBox(height: 20),
               const Text('Устройство успешно привязано!', style: TextStyle(fontSize: 20)),
               const SizedBox(height: 10),
-              Text('Приложение работает в фоне и отправляет координаты.', style: TextStyle(color: Colors.grey[700])),
+              Text('Статус: $_statusMessage', style: const TextStyle(color: Colors.blue, fontSize: 16)),
+              const SizedBox(height: 20),
+              if (_isTracking)
+                ElevatedButton(
+                  onPressed: _sendCurrentLocation, 
+                  child: const Text('Отправить координаты сейчас')
+                )
             ]
           ],
         ),
